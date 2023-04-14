@@ -4,6 +4,7 @@ import torch as th
 from .gaussian_diffusion import GaussianDiffusion
 
 
+#section_counts 就是一个字符串看是否是ddim开头
 def space_timesteps(num_timesteps, section_counts):
     """
     Create a list of timesteps to use from an original diffusion process,
@@ -30,7 +31,9 @@ def space_timesteps(num_timesteps, section_counts):
         if section_counts.startswith("ddim"):
             desired_count = int(section_counts[len("ddim") :])
             for i in range(1, num_timesteps):
+                #range(0, num_timesteps, i) 以0为开始，numsteps为结束，且间隔为i，的一个范围，然后的长度len = desired_count；
                 if len(range(0, num_timesteps, i)) == desired_count:
+                    #set集合
                     return set(range(0, num_timesteps, i))
             raise ValueError(
                 f"cannot create exactly {num_timesteps} steps with an integer stride"
@@ -69,6 +72,7 @@ class SpacedDiffusion(GaussianDiffusion):
     :param kwargs: the kwargs to create the base diffusion process.
     """
 
+#use_timesteps 可用的步长，如果步长=1，就是原始的步长;否则就是自己定义的序列；DDIM用的respacing方法。
     def __init__(self, use_timesteps, **kwargs):
         self.use_timesteps = set(use_timesteps)
         self.timestep_map = []
@@ -82,7 +86,9 @@ class SpacedDiffusion(GaussianDiffusion):
                 new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
                 last_alpha_cumprod = alpha_cumprod
                 self.timestep_map.append(i)
+
         kwargs["betas"] = np.array(new_betas)
+
         super().__init__(**kwargs)
 
 #神经网络预测出来的均值和方差
@@ -96,7 +102,7 @@ class SpacedDiffusion(GaussianDiffusion):
     ):  # pylint: disable=signature-differs
         return super().training_losses(self._wrap_model(model), *args, **kwargs)
 
-#模型包装
+#模型包装的作用，
     def _wrap_model(self, model):
         if isinstance(model, _WrappedModel):
             return model
@@ -108,7 +114,7 @@ class SpacedDiffusion(GaussianDiffusion):
         # Scaling is done by the wrapped model.
         return t
 
-
+#rescale_timesteps 是把时间步长固定在0-1000，original_num_steps 就是原始步长；
 class _WrappedModel:
     def __init__(self, model, timestep_map, rescale_timesteps, original_num_steps):
         self.model = model
@@ -117,8 +123,11 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
+        #引入新变量，必须保证新变量也在对应的设备比如GPU
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
+        #对时间还要进行变换映射,
         new_ts = map_tensor[ts]
+
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)

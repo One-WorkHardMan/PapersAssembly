@@ -127,6 +127,7 @@ class GaussianDiffusion:
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
         self.loss_type = loss_type
+
         self.rescale_timesteps = rescale_timesteps
 
         # Use float64 for accuracy.
@@ -494,7 +495,7 @@ class GaussianDiffusion:
                 yield out
                 img = out["sample"]
 
-#下面是DDIM的部分，这里不讲
+#下面是DDIM的部分
     def ddim_sample(
         self,
         model,
@@ -509,6 +510,14 @@ class GaussianDiffusion:
         Sample x_{t-1} from the model using DDIM.
 
         Same usage as p_sample().
+
+     out {
+            "mean": model_mean,
+            "variance": model_variance,
+            "log_variance": model_log_variance,
+            "pred_xstart": pred_xstart,
+        }
+
         """
         out = self.p_mean_variance(
             model,
@@ -521,22 +530,29 @@ class GaussianDiffusion:
         # Usually our model outputs epsilon, but we re-derive it
         # in case we used x_start or x_prev prediction.
         eps = self._predict_eps_from_xstart(x, t, out["pred_xstart"])
+
         alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x.shape)
         alpha_bar_prev = _extract_into_tensor(self.alphas_cumprod_prev, t, x.shape)
+
+        #论文里面可变化的\sigma,eta从0-1，模型从DDIM-DDPM
         sigma = (
             eta
             * th.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
             * th.sqrt(1 - alpha_bar / alpha_bar_prev)
         )
+
         # Equation 12.
         noise = th.randn_like(x)
         mean_pred = (
             out["pred_xstart"] * th.sqrt(alpha_bar_prev)
             + th.sqrt(1 - alpha_bar_prev - sigma ** 2) * eps
         )
+
+
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
+        #最后一个时刻的时候，我们不要这个随机噪声了，而是直接sample = mean_pred 输出图像；
         sample = mean_pred + nonzero_mask * sigma * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
@@ -635,6 +651,8 @@ class GaussianDiffusion:
             img = noise
         else:
             img = th.randn(*shape, device=device)
+
+        #列表逆序给indices
         indices = list(range(self.num_timesteps))[::-1]
 
         if progress:
@@ -719,6 +737,7 @@ class GaussianDiffusion:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
+        #每一步都要采样才行
         x_t = self.q_sample(x_start, t, noise=noise)
 
         terms = {}
