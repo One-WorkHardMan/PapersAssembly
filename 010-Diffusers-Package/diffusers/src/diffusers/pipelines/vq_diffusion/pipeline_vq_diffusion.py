@@ -107,7 +107,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
-            max_length=self.tokenizer.model_max_length,
+            max_length=self.tokenizer.model_max_length, # 预训练模型支持的最大长度
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
@@ -178,50 +178,6 @@ class VQDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[ImagePipelineOutput, Tuple]:
-        """
-        Function invoked when calling the pipeline for generation.
-
-        Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
-            num_inference_steps (`int`, *optional*, defaults to 100):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
-            truncation_rate (`float`, *optional*, defaults to 1.0 (equivalent to no truncation)):
-                Used to "truncate" the predicted classes for x_0 such that the cumulative probability for a pixel is at
-                most `truncation_rate`. The lowest probabilities that would increase the cumulative probability above
-                `truncation_rate` are set to zero.
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            generator (`torch.Generator`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.FloatTensor` of shape (batch), *optional*):
-                Pre-generated noisy latents to be used as inputs for image generation. Must be valid embedding indices.
-                Can be used to tweak the same generation with different prompts. If not provided, a latents tensor will
-                be generated of completely masked latent pixels.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
-
-        Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if `return_dict`
-            is True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
-        """
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -279,6 +235,8 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 model_output = model_output_uncond + guidance_scale * (model_output_text - model_output_uncond)
                 model_output -= torch.logsumexp(model_output, dim=1, keepdim=True)
 
+
+            # 超过阈值 直接 给 0 ；
             model_output = self.truncate(model_output, truncation_rate)
 
             # remove `log(0)`'s (`-inf`s)
